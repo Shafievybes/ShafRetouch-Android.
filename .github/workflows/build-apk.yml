@@ -23,6 +23,9 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
+
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
@@ -47,3 +50,4 @@ jobs:
           name: ShafRetouch-debug-apk
           path: project/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
