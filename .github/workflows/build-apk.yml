@@ -52,8 +52,7 @@ jobs:
       - name: Extract project
         run: |
           mkdir -p project
-          unzip -o ShafRetouch_APK_Build_Ready.zip -d project
-
+          unzip -o ShafRetouch_Optimized_AndroidProject(1).zip" -d project
       - name: Find Android project
         shell: bash
         run: |
