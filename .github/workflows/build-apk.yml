@@ -20,14 +20,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses
+        run: yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
 
       - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+        run: |
+          sdkmanager --sdk_root="$ANDROID_HOME" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "platform-tools"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -39,6 +40,12 @@ jobs:
           mkdir -p project
           unzip -o ShafRetouch_APK_Build_Ready.zip -d project
 
+      - name: Locate Android project
+        run: |
+          find project -name settings.gradle \
+            -o -name settings.gradle.kts \
+            -o -name gradlew
+
       - name: Build APK
         run: |
           cd project
@@ -48,6 +55,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ShafRetouch-debug-apk
-          path: project/app/build/outputs/apk/debug/*.apk
+          path: project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
