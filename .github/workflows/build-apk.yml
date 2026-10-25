@@ -48,11 +48,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.5'
-
       - name: Extract project
+        shell: bash
         run: |
           mkdir -p project
-          unzip -o ShafRetouch_Optimized_AndroidProject(1).zip" -d project
+          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found"
+            ls -la
+            exit 1
+          fi
+          echo "Extracting: $ZIP_FILE"
+          unzip -o "$ZIP_FILE" -d projectized_AndroidProject(1).zip" -d project
       - name: Find Android project
         shell: bash
         run: |
