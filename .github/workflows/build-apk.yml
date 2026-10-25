@@ -2,9 +2,12 @@
 name: Build Shaf Retouch APK
 
 on:
-  workflow_dispatch:
   push:
     branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -26,57 +29,103 @@ jobs:
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" \
             -type f -name sdkmanager 2>/dev/null | head -n 1)"
+
           if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager was not found"
+            echo "ERROR: Android SDK manager not found."
             exit 1
           fi
+
           echo "SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
 
       - name: Accept Android SDK licenses
-        run: yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses
+        shell: bash
+        run: |
+          yes | "$SDKMANAGER" \
+            --sdk_root="$SDK_ROOT" --licenses || true
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0"
 
+      - name: Extract project ZIP
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import sys
+
+          archives = sorted(Path(".").glob("*.zip"))
+
+          if not archives:
+              print("ERROR: No ZIP file found in repository root.")
+              sys.exit(1)
+
+          archive = archives[0]
+          print(f"Extracting ZIP: {archive}")
+
+          with ZipFile(archive) as z:
+              bad_file = z.testzip()
+              if bad_file:
+                  print(f"ERROR: Damaged ZIP entry: {bad_file}")
+                  sys.exit(1)
+              z.extractall("project")
+
+          print("ZIP extraction completed.")
+          PY
+
+      - name: Locate Android project
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import sys
+
+          root = Path("project")
+          settings = list(root.rglob("settings.gradle")) + \
+                     list(root.rglob("settings.gradle.kts"))
+
+          settings = [
+              p for p in settings
+              if ".gradle" not in p.parts
+          ]
+
+          if not settings:
+              print("ERROR: No settings.gradle file found.")
+              print("Files extracted from ZIP:")
+              for p in list(root.rglob("*"))[:100]:
+                  print(p)
+              sys.exit(1)
+
+          project_dir = settings[0].parent.resolve()
+          print(f"Android project directory: {project_dir}")
+
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"PROJECT_DIR={project_dir}\n")
+          PY
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.5'
-      - name: Extract project
-        shell: bash
-        run: |
-          mkdir -p project
-          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found"
-            ls -la
-            exit 1
-          fi
-          echo "Extracting: $ZIP_FILE"
-          unzip -o "$ZIP_FILE" -d projectized_AndroidProject(1).zip" -d project
-      - name: Find Android project
-        shell: bash
-        run: |
-          SETTINGS="$(find project -type f \
-            \( -name settings.gradle \
-            -o -name settings.gradle.kts \) -print -quit)"
-          if [ -z "$SETTINGS" ]; then
-            echo "No Gradle settings file found in the extracted ZIP"
-            find project -maxdepth 4 -type f | head -100
-            exit 1
-          fi
-          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
 
-      - name: Build APK
+      - name: Build debug APK
+        shell: bash
         run: |
           cd "$PROJECT_DIR"
-          gradle assembleDebug --stacktrace
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -84,3 +133,4 @@ jobs:
           name: ShafRetouch-debug-apk
           path: project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          
