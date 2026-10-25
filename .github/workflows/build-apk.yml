@@ -1,136 +1,36 @@
-
-name: Build Shaf Retouch APK
+name: Build Android APK
 
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Find Android SDK tools
-        shell: bash
-        run: |
-          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" \
-            -type f -name sdkmanager 2>/dev/null | head -n 1)"
-
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: Android SDK manager not found."
-            exit 1
-          fi
-
-          echo "SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-
-      - name: Accept Android SDK licenses
-        shell: bash
-        run: |
-          yes | "$SDKMANAGER" \
-            --sdk_root="$SDK_ROOT" --licenses || true
-
-      - name: Install Android SDK packages
-        shell: bash
-        run: |
-          "$SDKMANAGER" --sdk_root="$SDK_ROOT" \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
-
-      - name: Extract project ZIP
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile
-          import sys
-
-          archives = sorted(Path(".").glob("*.zip"))
-
-          if not archives:
-              print("ERROR: No ZIP file found in repository root.")
-              sys.exit(1)
-
-          archive = archives[0]
-          print(f"Extracting ZIP: {archive}")
-
-          with ZipFile(archive) as z:
-              bad_file = z.testzip()
-              if bad_file:
-                  print(f"ERROR: Damaged ZIP entry: {bad_file}")
-                  sys.exit(1)
-              z.extractall("project")
-
-          print("ZIP extraction completed.")
-          PY
-
-      - name: Locate Android project
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import sys
-
-          root = Path("project")
-          settings = list(root.rglob("settings.gradle")) + \
-                     list(root.rglob("settings.gradle.kts"))
-
-          settings = [
-              p for p in settings
-              if ".gradle" not in p.parts
-          ]
-
-          if not settings:
-              print("ERROR: No settings.gradle file found.")
-              print("Files extracted from ZIP:")
-              for p in list(root.rglob("*"))[:100]:
-                  print(p)
-              sys.exit(1)
-
-          project_dir = settings[0].parent.resolve()
-          print(f"Android project directory: {project_dir}")
-
-          with open(os.environ["GITHUB_ENV"], "a") as f:
-              f.write(f"PROJECT_DIR={project_dir}\n")
-          PY
-
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.5'
 
-      - name: Build debug APK
-        shell: bash
-        run: |
-          cd "$PROJECT_DIR"
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
 
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace
-          else
-            gradle assembleDebug --stacktrace
-          fi
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ShafRetouch-debug-apk
-          path: project/**/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
           
